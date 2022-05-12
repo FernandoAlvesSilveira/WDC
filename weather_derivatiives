@@ -1,0 +1,309 @@
+pragma solidity ^0.6.0;
+pragma experimental ABIEncoderV2;
+
+import "@chainlink/contracts/src/v0.6/ChainlinkClient.sol";
+
+contract WeatherDerivative is ChainlinkClient{
+  
+struct option {
+  uint maturity;
+  uint strike;
+  uint payoff;
+  uint limit;
+  uint location;
+  uint tick;
+  uint id;
+  address launcher;
+ }
+ 
+struct order {
+  address holder;
+  uint maturity;
+  uint strike;
+  uint payoff;
+  uint limit;
+  uint location;
+  uint tick;
+  uint id;
+  address launcher;
+}
+
+
+mapping(uint256 => option) optionList;
+mapping(uint256 => order) orderList;
+
+
+constructor() public {
+  setPublicChainlinkToken();
+  oracle = 0x2f90A6D021db21e1B2A077c5a37B3C7E75D15b7e;
+  jobId = "29fa9aa13bf1468788b7cc4a500a45b8";
+  fee = 0.1 * 10 ** 18; // 0.1 LINK
+  owner = msg.sender;
+  Option_id = 1;
+  Order_id = 1;
+}
+address public owner;
+
+modifier ownerOnly {
+   require(msg.sender == owner);
+  _;
+}
+address private oracle;
+bytes32 private jobId;
+uint256 private fee;
+uint private Option_id;
+uint private Order_id;
+uint public Jatai;
+uint public Irati;
+uint public RioVerde;
+uint256 public _Jatai;
+
+
+uint256 public _Irati;
+uint256 public _RioVerde;
+uint256 public _JataiID;
+uint256 public _IratiID;
+uint256 public _RioVerdeID;
+
+function getLestOptionId() public view returns (uint256) {
+  return Option_id;
+}
+
+function getLestOrderId() public view returns (uint256) {
+  return Order_id;
+}
+
+function submitOption (uint maturity, uint strike,
+  uint payoff, uint limit, uint location, uint tick) public
+  payable ownerOnly returns (bool){
+  require(msg.value == ((limit * tick) +
+  ((limit * tick) / 100)));
+  option memory newOption =
+  option(maturity, strike, payoff,
+  limit, location, tick, Option_id, msg.sender);
+  optionList[Option_id] = newOption;
+  Option_id++;
+  return (true);
+}
+
+function _findDD(uint _location) view public
+  returns (uint DD) {
+  if (_location == 1) {
+  DD = Jatai;
+}else if (_location == 2){
+  DD = Irati;
+}else if (_location == 3) {
+  DD = RioVerde;
+}
+  return DD;
+}
+
+function submitOrder (uint id) payable public
+  returns (bool) {
+  uint _payoff = optionList[id].payoff;
+  uint _limit = optionList[id].limit;
+  uint _strike = optionList[id].strike;
+  uint _maturity = optionList[id].maturity;
+  uint _location = optionList[id].location;
+  uint _tick = optionList[id].tick;
+  address _launcher = optionList[id].launcher;
+  require(msg.value == _payoff + (_payoff / 100));
+  delete optionList[id];
+  order memory newOrder = order(msg.sender, _maturity,
+  _strike, _payoff, _limit, _location, _tick,
+  id, _launcher);
+  orderList[id] = newOrder;
+  Order_id++;
+  return (true);
+}
+
+
+function exerciseOption (uint id) public {
+  uint _payoff = orderList[id].payoff;
+  uint _strike = orderList[id].strike;
+  uint _tick = orderList[id].tick;
+  uint _limit = orderList[id].limit;
+  uint _location = orderList[id].location;
+  uint _maturity = orderList[id].maturity;
+  uint DD = _findDD(_location);
+  address payable _owner_ = address(uint160(owner));
+  address payable _holder_ = address(uint160
+  (orderList[id].holder));
+  address payable _launcher_ = address(uint160
+  (orderList[id].launcher));
+  require(_maturity < now, "execução antes do vencimento");
+  require(DD > 0, "DD não observado no oráculo");
+  if (DD > _strike) {
+    if ((DD - _strike) < _limit) {
+    _holder_.transfer((DD - _strike) * _tick);
+    _launcher_.transfer(
+    ((_payoff + (_limit * _tick)) -
+    ((DD - _strike) * _tick)));
+    delete orderList[id];
+  } else if ((DD - _strike) > _limit) {
+  _holder_.transfer((_limit * _tick) + _payoff);
+  _owner_.transfer((_limit * _tick) / 100);
+  delete orderList[id];
+ }} else if (DD < _strike) {
+  _launcher_.transfer((_payoff + (_tick * _limit)));
+  _owner_.transfer(
+  ((_payoff + (_tick * _limit))) / 100);
+  delete orderList[id];
+}}
+
+function getOptionDetails(uint id) public view returns (
+  uint, // maturity;
+  uint, //strike;
+  uint, //payoff;
+  uint, //limit;
+  uint, //location;
+  uint, //tick;
+  uint, //id;
+  address //launcher;
+  ) {
+  option memory listedOption = optionList[id];
+  return (
+  listedOption.maturity,
+  listedOption.strike,
+  listedOption.payoff,
+  listedOption.limit,
+  listedOption.location,
+  listedOption.tick,
+  listedOption.id,
+  listedOption.launcher
+  );
+}
+
+function getOrderDetails(uint id) public view returns (
+  address, //holder;
+  uint, //maturity;
+  uint, //strike;
+  uint, //payoff;
+  uint, //limit;
+  75
+  uint, //location;
+  uint, //tick;
+  uint, //id;
+  address //launcher;
+  ) {
+  order memory listedOrders = orderList[id];
+  return (
+  listedOrders.holder,
+  listedOrders.maturity,
+  listedOrders.strike,
+  listedOrders.payoff,
+  listedOrders.limit,
+  listedOrders.location,
+  listedOrders.tick,
+  listedOrders.id,
+  listedOrders.launcher
+  );
+}
+
+function Balance() public view returns (uint) {
+  return address(this).balance;
+}
+
+function requestJataiDD() public returns (bytes32 _JataiID)
+{
+  Chainlink.Request memory requestJatai =
+  buildChainlinkRequest (jobId, address(this),
+  this.fulfillJatai.selector);
+  if (now > 1635724800) {
+  requestJatai.add("get", "link");
+}else if (now > 1630454400) {
+  76
+  requestJatai.add("get", "link");
+}else if (now > 1625097600) {
+  requestJatai.add("get", "link");
+}else if (now > 1619827200) {
+  requestJatai.add("get", "link");
+}else if (now > 1614556800) {
+  requestJatai.add("get", "link");
+}else if (now > 1609459200) {
+  requestJatai.add("get", "link");
+}
+  requestJatai.add(
+  "path","locations.jatai,br.values.58.cumulativedegreedays");
+  requestJatai.addInt("times", 1);
+  return sendChainlinkRequestTo(oracle, requestJatai, fee);
+}
+
+function fulfillJatai(bytes32 _JataiID, uint256 _Jatai)
+  public recordChainlinkFulfillment(_JataiID)
+{
+  Jatai = _Jatai;
+}
+
+function getJataiDD () public view returns (uint256) {
+  return Jatai;
+}
+
+function requestIratiDD() public returns (bytes32 _IratiID){
+  Chainlink.Request memory requestIrati =
+  buildChainlinkRequest(jobId, address(this),
+  this.fulfillIrati.selector);
+  if (now > 1635724800){
+  requestIrati.add("get", "link");
+}else if(now > 1630454400) {
+  requestIrati.add("get", "link");
+}else if (now > 1625097600) {
+  requestIrati.add("get", "link");
+}else if (now > 1619827200) {
+  requestIrati.add("get", "link");
+}else if (now > 1614556800) {
+  requestIrati.add("get", "link");
+}else if (now > 1609459200) {
+  requestIrati.add("get", "link");
+}
+  requestIrati.add(
+  "path", "locations.irati,br.values.58.cumulativedegreedays");
+  requestIrati.addInt("times", 1);
+  return sendChainlinkRequestTo(oracle, requestIrati, fee);
+}
+  function fulfillIrati(bytes32 _IratiID, uint256 _Irati)
+  public recordChainlinkFulfillment(_IratiID)
+  {
+  Irati = _Irati;
+}
+
+function getIratiDD () public view returns (uint256) {
+  return Irati;
+}
+
+function requestRioVerdeDD() public returns (bytes32 _RioVerdeID) {
+  Chainlink.Request memory requestRioVerde =
+  buildChainlinkRequest(jobId, address(this),
+  this.fulfillRioVerde.selector);
+  if (now > 1635724800){
+  requestRioVerde.add("get", "link");
+}else if(now > 1630454400) {
+  requestRioVerde.add("get", "link");
+}else if (now > 1625097600) {
+  requestRioVerde.add("get", "link");
+}else if (now > 1619827200) {
+  requestRioVerde.add("get", "link");
+}else if (now > 1614556800) {
+  requestRioVerde.add("get", "link");
+}else if (now > 1609459200) {
+  requestRioVerde.add("get", "link");
+}
+  requestRioVerde.add("path",
+  "locations.rioverde,br.values.58.cumulativedegreedays");
+  requestRioVerde.addInt("times", 1);
+  return sendChainlinkRequestTo(oracle, requestRioVerde, fee);
+}
+  function fulfillRioVerde(bytes32 _RioVerdeID, uint256 _RioVerde)
+  public recordChainlinkFulfillment(_RioVerdeID)  {
+  RioVerde = _RioVerde;
+}
+  function getRioVerdeDD () public view returns (uint256) {
+  return RioVerde;
+}
+  function kill() public onlyOwner {
+  selfdestruct(owner);
+}}
+
+
+
+
